@@ -54,4 +54,25 @@ public class AssumedClaimController {
             @Valid @RequestBody StatusChangeCommand command) {
         return service.changeStatus(tenantId, id, command);
     }
+
+    @PostMapping("/{id}/close")
+    public AssumedClaimDto close(
+            @RequestHeader("X-EIA-Tenant") UUID tenantId,
+            @PathVariable UUID id) {
+        return service.close(tenantId, id);
+    }
+
+    @GetMapping("/{id}/financials")
+    public FinancialSummaryDto financials(
+            @RequestHeader("X-EIA-Tenant") UUID tenantId,
+            @PathVariable UUID id) {
+        return service.financials(tenantId, id);
+    }
+
+    @GetMapping("/{id}/audit")
+    public List<ClaimAuditEntryDto> audit(
+            @RequestHeader("X-EIA-Tenant") UUID tenantId,
+            @PathVariable UUID id) {
+        return service.audit(tenantId, id);
+    }
 }

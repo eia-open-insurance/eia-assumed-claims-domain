@@ -1,5 +1,7 @@
 package com.eia.assumedclaims.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
@@ -21,77 +23,45 @@ public class AssumedClaimClient {
     public static final String BOOK = "ASSUMED";
     public static final String BOOK_HEADER = "X-EIA-Book";
     public static final String TENANT_HEADER = "X-EIA-Tenant";
+    public static final String USER_HEADER = "X-EIA-User";
 
     private final RestClient client;
+    private final ObjectMapper objectMapper;
 
     public AssumedClaimClient(
             RestClient.Builder builder,
+            ObjectMapper objectMapper,
             @Value("${eia.assumed-claims.expert-url:http://localhost:8089}") String baseUrl) {
         this.client = builder.baseUrl(baseUrl).build();
+        this.objectMapper = objectMapper;
     }
 
     public List<AssumedClaimDto> findAll(UUID tenantId) {
-        try {
-            List<AssumedClaimDto> claims = client.get()
-                    .uri(uri -> uri.path("/internal/v1/assumed-claims")
-                            .queryParam("tenantId", tenantId)
-                            .build())
-                    .header(BOOK_HEADER, BOOK)
-                    .header(TENANT_HEADER, tenantId.toString())
-                    .retrieve()
-                    .body(new ParameterizedTypeReference<>() {});
-            return claims == null ? List.of() : claims;
-        } catch (RestClientResponseException exception) {
-            throw translate(exception, null);
-        } catch (ResourceAccessException exception) {
-            throw ApiException.expertUnavailable();
-        }
+        return getList(tenantId, "/internal/v1/assumed-claims?tenantId=" + tenantId,
+                new ParameterizedTypeReference<>() {}, null);
     }
 
     public AssumedClaimDto findById(UUID tenantId, UUID id) {
-        try {
-            return client.get()
-                    .uri(uri -> uri.path("/internal/v1/assumed-claims/{id}")
-                            .queryParam("tenantId", tenantId)
-                            .build(id))
-                    .header(BOOK_HEADER, BOOK)
-                    .header(TENANT_HEADER, tenantId.toString())
-                    .retrieve()
-                    .body(AssumedClaimDto.class);
-        } catch (RestClientResponseException exception) {
-            throw translate(exception, id);
-        } catch (ResourceAccessException exception) {
-            throw ApiException.expertUnavailable();
-        }
+        return get(tenantId, "/internal/v1/assumed-claims/" + id + "?tenantId=" + tenantId,
+                AssumedClaimDto.class, id);
     }
 
     public AssumedClaimDto create(UUID tenantId, CreateAssumedClaimCommand command) {
-        try {
-            return client.post()
-                    .uri("/internal/v1/assumed-claims")
-                    .header(BOOK_HEADER, BOOK)
-                    .header(TENANT_HEADER, tenantId.toString())
-                    .body(new CreateBody(
-                            tenantId,
-                            command.contractId(),
-                            command.cedentClaimNumber(),
-                            command.lossDate(),
-                            command.reportDate(),
-                            command.reserveAmount(),
-                            command.reserveCurrency()))
-                    .retrieve()
-                    .body(AssumedClaimDto.class);
-        } catch (RestClientResponseException exception) {
-            throw translate(exception, null);
-        } catch (ResourceAccessException exception) {
-            throw ApiException.expertUnavailable();
-        }
+        return post(tenantId, "/internal/v1/assumed-claims", new CreateBody(
+                        tenantId,
+                        command.contractId(),
+                        command.cedentClaimNumber(),
+                        command.lossDate(),
+                        command.reportDate(),
+                        command.reserveAmount(),
+                        command.reserveCurrency()),
+                AssumedClaimDto.class, null);
     }
 
     public AssumedClaimDto changeStatus(UUID tenantId, UUID id, AssumedClaimStatus targetStatus, int expectedVersion) {
         try {
             return client.post()
-                    .uri(uri -> uri.path("/internal/v1/assumed-claims/{id}/status").build(id))
+                    .uri("/internal/v1/assumed-claims/" + id + "/status")
                     .header(BOOK_HEADER, BOOK)
                     .header(TENANT_HEADER, tenantId.toString())
                     .body(new StatusBody(tenantId, targetStatus, expectedVersion))
@@ -99,7 +69,10 @@ public class AssumedClaimClient {
                     .body(AssumedClaimDto.class);
         } catch (RestClientResponseException exception) {
             if (exception.getStatusCode().value() == 409) {
-                throw ApiException.versionConflict(expectedVersion);
+                ExpertProblem problem = problem(exception);
+                if (problem != null && "EIA-RNS-7006".equals(problem.code())) {
+                    throw ApiException.versionConflict(expectedVersion);
+                }
             }
             throw translate(exception, id);
         } catch (ResourceAccessException exception) {
@@ -107,18 +80,176 @@ public class AssumedClaimClient {
         }
     }
 
-    private static ApiException translate(RestClientResponseException exception, UUID notFoundId) {
+    public AssumedClaimDto close(UUID tenantId, UUID id) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + id + "/close", null, AssumedClaimDto.class, id);
+    }
+
+    public FinancialSummaryDto financials(UUID tenantId, UUID id) {
+        return get(tenantId, "/internal/v1/assumed-claims/" + id + "/financials", FinancialSummaryDto.class, id);
+    }
+
+    public List<ClaimAuditEntryDto> audit(UUID tenantId, UUID id) {
+        return getList(tenantId, "/internal/v1/assumed-claims/" + id + "/audit",
+                new ParameterizedTypeReference<>() {}, id);
+    }
+
+    public List<LossAdviceDto> findAdvices(UUID tenantId, UUID claimId) {
+        return getList(tenantId, "/internal/v1/assumed-claims/" + claimId + "/advices",
+                new ParameterizedTypeReference<>() {}, claimId);
+    }
+
+    public LossAdviceDto recordAdvice(UUID tenantId, UUID claimId, RecordAdviceCommand command) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + claimId + "/advices",
+                command, LossAdviceDto.class, claimId);
+    }
+
+    public LossAdviceDto acceptAdvice(UUID tenantId, UUID claimId, UUID adviceId, AcceptAdviceCommand command) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + claimId + "/advices/" + adviceId + "/accept",
+                command, LossAdviceDto.class, claimId);
+    }
+
+    public List<BordereauBatchDto> findBordereaux(UUID tenantId, UUID claimId) {
+        return getList(tenantId, "/internal/v1/assumed-claims/" + claimId + "/bordereaux",
+                new ParameterizedTypeReference<>() {}, claimId);
+    }
+
+    public BordereauIngestResultDto ingestBordereau(UUID tenantId, UUID claimId, IngestBordereauCommand command) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + claimId + "/bordereaux",
+                command, BordereauIngestResultDto.class, claimId);
+    }
+
+    public List<ReserveHistoryDto> findReserves(UUID tenantId, UUID claimId) {
+        return getList(tenantId, "/internal/v1/assumed-claims/" + claimId + "/reserves",
+                new ParameterizedTypeReference<>() {}, claimId);
+    }
+
+    public ReserveHistoryDto changeReserve(UUID tenantId, UUID claimId, ReserveChangeCommand command) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + claimId + "/reserves",
+                command, ReserveHistoryDto.class, claimId);
+    }
+
+    public List<CashCallDto> findCashCalls(UUID tenantId, UUID claimId) {
+        return getList(tenantId, "/internal/v1/assumed-claims/" + claimId + "/cash-calls",
+                new ParameterizedTypeReference<>() {}, claimId);
+    }
+
+    public CashCallDto requestCashCall(UUID tenantId, UUID claimId, RequestCashCallCommand command) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + claimId + "/cash-calls",
+                command, CashCallDto.class, claimId);
+    }
+
+    public List<RecoveryDto> findRecoveries(UUID tenantId, UUID claimId) {
+        return getList(tenantId, "/internal/v1/assumed-claims/" + claimId + "/recoveries",
+                new ParameterizedTypeReference<>() {}, claimId);
+    }
+
+    public RecoveryDto recordRecovery(UUID tenantId, UUID claimId, RecordRecoveryCommand command) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + claimId + "/recoveries",
+                command, RecoveryDto.class, claimId);
+    }
+
+    public CommutationDto findCommutation(UUID tenantId, UUID claimId) {
+        return get(tenantId, "/internal/v1/assumed-claims/" + claimId + "/commutation",
+                CommutationDto.class, null);
+    }
+
+    public CommutationDto commute(UUID tenantId, UUID claimId, CommuteClaimCommand command) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + claimId + "/commute",
+                command, CommutationDto.class, claimId);
+    }
+
+    public List<DisputeDto> findDisputes(UUID tenantId, UUID claimId) {
+        return getList(tenantId, "/internal/v1/assumed-claims/" + claimId + "/disputes",
+                new ParameterizedTypeReference<>() {}, claimId);
+    }
+
+    public DisputeDto raiseDispute(UUID tenantId, UUID claimId, RaiseDisputeCommand command) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + claimId + "/disputes",
+                command, DisputeDto.class, claimId);
+    }
+
+    public DisputeDto resolveDispute(UUID tenantId, UUID claimId, UUID disputeId, ResolveDisputeCommand command) {
+        return post(tenantId, "/internal/v1/assumed-claims/" + claimId + "/disputes/" + disputeId + "/resolve",
+                command, DisputeDto.class, claimId);
+    }
+
+    private <T> T get(UUID tenantId, String path, Class<T> type, UUID notFoundId) {
+        try {
+            return client.get()
+                    .uri(path)
+                    .header(BOOK_HEADER, BOOK)
+                    .header(TENANT_HEADER, tenantId.toString())
+                    .retrieve()
+                    .body(type);
+        } catch (RestClientResponseException exception) {
+            throw translate(exception, notFoundId);
+        } catch (ResourceAccessException exception) {
+            throw ApiException.expertUnavailable();
+        }
+    }
+
+    private <T> List<T> getList(UUID tenantId, String path, ParameterizedTypeReference<List<T>> type, UUID notFoundId) {
+        try {
+            List<T> values = client.get()
+                    .uri(path)
+                    .header(BOOK_HEADER, BOOK)
+                    .header(TENANT_HEADER, tenantId.toString())
+                    .retrieve()
+                    .body(type);
+            return values == null ? List.of() : values;
+        } catch (RestClientResponseException exception) {
+            throw translate(exception, notFoundId);
+        } catch (ResourceAccessException exception) {
+            throw ApiException.expertUnavailable();
+        }
+    }
+
+    private <T> T post(UUID tenantId, String path, Object body, Class<T> type, UUID notFoundId) {
+        try {
+            RestClient.RequestBodySpec request = client.post()
+                    .uri(path)
+                    .header(BOOK_HEADER, BOOK)
+                    .header(TENANT_HEADER, tenantId.toString());
+            if (body != null) {
+                request.body(body);
+            }
+            return request.retrieve().body(type);
+        } catch (RestClientResponseException exception) {
+            throw translate(exception, notFoundId);
+        } catch (ResourceAccessException exception) {
+            throw ApiException.expertUnavailable();
+        }
+    }
+
+    private ApiException translate(RestClientResponseException exception, UUID notFoundId) {
         int status = exception.getStatusCode().value();
         if (status == 404 && notFoundId != null) {
             return ApiException.assumedClaimNotFound(notFoundId);
         }
-        if (status == 400) {
-            return ApiException.validation("The assumed claims expert rejected the request as invalid.", List.of());
-        }
         if (exception.getStatusCode().is5xxServerError()) {
             return ApiException.expertUnavailable();
         }
+        ExpertProblem problem = problem(exception);
+        if (problem != null && problem.code() != null && !problem.code().isBlank()) {
+            return ApiException.fromExpert(status, problem.code(), problem.category(), problem.title(),
+                    problem.detail(), problem.errors());
+        }
+        if (status == 400) {
+            return ApiException.validation("The assumed claims expert rejected the request as invalid.", List.of());
+        }
         return ApiException.expertRejected(status);
+    }
+
+    private ExpertProblem problem(RestClientResponseException exception) {
+        try {
+            String body = exception.getResponseBodyAsString();
+            if (body == null || body.isBlank()) {
+                return null;
+            }
+            return objectMapper.readValue(body, ExpertProblem.class);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     record CreateBody(
@@ -132,4 +263,17 @@ public class AssumedClaimClient {
     ) {}
 
     record StatusBody(UUID tenantId, AssumedClaimStatus targetStatus, int expectedVersion) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record ExpertProblem(
+            String type,
+            String title,
+            int status,
+            String detail,
+            String instance,
+            String code,
+            String category,
+            boolean retryable,
+            List<FieldIssue> errors
+    ) {}
 }

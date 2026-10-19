@@ -8,3 +8,10 @@
 6. Add Docker image build and Helm values for the target environment.
 7. Publish OpenAPI/AsyncAPI contracts to `eia-contracts`.
 8. Add the service to the release manifest.
+
+## Implemented
+
+- Public claim API, lifecycle pre-checks, ASSUMED wall, structured errors.
+- Second-slice public orchestration for advices/bordereaux, reserves, cash calls, recoveries,
+  commutation, disputes, financials, closure, and audit; expert problem propagation preserves
+  status/code/category/field errors.

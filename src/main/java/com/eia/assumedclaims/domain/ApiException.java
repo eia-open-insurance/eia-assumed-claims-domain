@@ -130,4 +130,31 @@ public class ApiException extends RuntimeException {
                 List.of()
         );
     }
+
+    /**
+     * Re-renders a structured expert problem on the public surface, preserving its HTTP status and
+     * stable code (for example 428 approval-required or 422 business-rule).
+     */
+    public static ApiException fromExpert(
+            int upstreamStatus,
+            String code,
+            String category,
+            String title,
+            String detail,
+            List<FieldIssue> errors
+    ) {
+        HttpStatus status = HttpStatus.resolve(upstreamStatus);
+        if (status == null || status.is5xxServerError()) {
+            return expertUnavailable();
+        }
+        return new ApiException(
+                status,
+                code,
+                category == null ? "BUSINESS_RULE" : category,
+                title == null ? "Assumed claims request rejected" : title,
+                detail == null ? "The assumed claims expert rejected the request." : detail,
+                status == HttpStatus.CONFLICT,
+                errors
+        );
+    }
 }

@@ -24,17 +24,29 @@ Assumed Claims business rules, transaction catalog, orchestration, approvals, an
 ## Implemented slice
 
 - Spring Boot 3.4.0 on Java 22, listening on port `8090`.
-- Public API: `GET /api/v1/assumed-claims`, `GET /api/v1/assumed-claims/{id}`,
-  `POST /api/v1/assumed-claims`, and `POST /api/v1/assumed-claims/{id}/status`. The SPEC path
-  `/api/v1/assumed-claims/claims` is served as an alias.
+- Public claim API: `GET /api/v1/assumed-claims`, `GET /api/v1/assumed-claims/{id}`,
+  `POST /api/v1/assumed-claims`, `POST /api/v1/assumed-claims/{id}/status`,
+  `POST /api/v1/assumed-claims/{id}/close`, `GET /api/v1/assumed-claims/{id}/financials`, and
+  `GET /api/v1/assumed-claims/{id}/audit`. The SPEC path `/api/v1/assumed-claims/claims` is served
+  as an alias.
+- Public second-slice API (both the short and the `/claims` alias form):
+  - `GET|POST /{id}/advices`, `POST /{id}/advices/{adviceId}/accept`, `GET|POST /{id}/bordereaux`;
+  - `GET|POST /{id}/reserves`;
+  - `GET|POST /{id}/cash-calls`;
+  - `GET|POST /{id}/recoveries`;
+  - `GET /{id}/commutation`, `POST /{id}/commute`;
+  - `GET|POST /{id}/disputes`, `POST /{id}/disputes/{disputeId}/resolve`.
 - Every request requires `X-EIA-Tenant` (UUID) and `X-EIA-Book: ASSUMED`. Missing tenant context
   returns a structured `400`; a missing or different book returns a structured `404`
   (`EIA-RNS-7005`), never `403`.
 - The service enforces `report_date >= loss_date`, non-negative reserves, and the
-  `AssumedClaimStatus` lifecycle from SPEC §11.5.6, including optimistic version checks.
+  `AssumedClaimStatus` lifecycle from SPEC §11.5.6, including optimistic version checks. The
+  second-slice business invariants live in the expert, which owns the transactional record; the
+  domain propagates the expert's status, stable code, category, and field errors unchanged
+  (including `409`, `422`, and `428`).
 - The expert is called through a `RestClient` component at `eia.assumed-claims.expert-url`
   (default `http://localhost:8089`), forwarding the ASSUMED book and tenant headers.
-- Errors are structured `Problem`-shaped JSON for `400`, `404`, `409`, and `502` cases.
+- Errors are structured `Problem`-shaped JSON for `400`, `404`, `409`, `422`, `428`, and `502` cases.
 
 ## Local run
 
@@ -48,10 +60,11 @@ Start the expert first; the domain does not persist claims itself.
 
 ## Verification
 
+- Unit and controller tests: `.\gradlew.bat test`.
+- End-to-end local check: run the expert on 8089 and the domain on 8090, then exercise
+  `advice -> accept -> open -> reserve -> cash call -> recovery -> financials` through
+  `/api/v1/assumed-claims`.
 - Lint and format
-- Unit tests with 100% business-logic coverage where applicable
-- Contract tests
-- Integration or Playwright tests where applicable
 - Security scan and SBOM
 - Build and publish
 

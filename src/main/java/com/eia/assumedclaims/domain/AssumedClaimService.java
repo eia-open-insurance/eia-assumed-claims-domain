@@ -44,6 +44,18 @@ public class AssumedClaimService {
         return client.changeStatus(tenantId, id, command.targetStatus(), command.expectedVersion());
     }
 
+    public AssumedClaimDto close(UUID tenantId, UUID id) {
+        return client.close(tenantId, id);
+    }
+
+    public FinancialSummaryDto financials(UUID tenantId, UUID id) {
+        return client.financials(tenantId, id);
+    }
+
+    public List<ClaimAuditEntryDto> audit(UUID tenantId, UUID id) {
+        return client.audit(tenantId, id);
+    }
+
     private static void validateCreate(CreateAssumedClaimCommand command) {
         List<FieldIssue> issues = new ArrayList<>();
         if (command.lossDate() != null && command.reportDate() != null

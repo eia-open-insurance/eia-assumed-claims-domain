@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -26,6 +27,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiError> handleApiException(ApiException exception, HttpServletRequest request) {
         return ResponseEntity.status(exception.status())
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .body(ApiError.from(exception, request.getRequestURI()));
     }
 
@@ -105,7 +107,7 @@ public class ApiExceptionHandler {
             boolean retryable,
             List<FieldIssue> issues,
             HttpServletRequest request) {
-        return ResponseEntity.status(status).body(new ApiError(
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(new ApiError(
                 "https://errors.eia.example/" + code.toLowerCase(Locale.ROOT),
                 title,
                 status.value(),

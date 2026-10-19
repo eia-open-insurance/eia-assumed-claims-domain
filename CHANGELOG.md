@@ -10,3 +10,4 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 - Repository baseline.
 - Spring Boot 3.4.0 domain slice: `/api/v1/assumed-claims` API, tenant and ASSUMED book enforcement, date and reserve invariants, the SPEC status lifecycle, a RestClient expert adapter, structured errors, and JUnit controller and lifecycle tests.
+- Second slice: public loss advice/bordereau, reserve history, cash call, recovery, commutation, dispute, financial, closure, and audit endpoints; expert problem propagation preserves status/code/category and field errors (including 422 and 428); client header and error-translation tests added.
