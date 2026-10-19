@@ -1,17 +1,17 @@
-# eia-reinsurance-domain
+# eia-assumed-claims-domain
 
 - GitHub organization: `eia-open-insurance`
-- Repository URL: https://github.com/eia-open-insurance/eia-reinsurance-domain
+- Repository URL: https://github.com/eia-open-insurance/eia-assumed-claims-domain
 - Type: Spring Boot service
 - Deployable: Yes
-- Owner: Reinsurance
+- Owner: Assumed Claims
 - Runtime: Java 22 and Spring Boot
-- Data store: eia_reinsurance (tx schema)
-- Depends on: eia-reinsurance-expert, eia-contracts, eia-open-insurance-libs
+- Data store: eia_assumed (tx schema)
+- Depends on: eia-assumed-claims-expert, eia-contracts, eia-open-insurance-libs
 
 ## Purpose
 
-Reinsurance business rules, transaction catalog, orchestration, approvals, and APIs. Reinsurance claims: loss advices, reserves, cash calls, recoveries, and commutations.
+Assumed Claims business rules, transaction catalog, orchestration, approvals, and APIs. Assumed claims: loss advices, reserves, cash calls, recoveries, and commutations.
 
 ## Responsibilities
 
