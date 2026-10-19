@@ -1,5 +1,5 @@
 /**
- * eia-assumed-domain.
+ * eia-reinsurance-domain.
  */
-package com.eia.assumed.domain;
+package com.eia.reinsurance.domain;
 
