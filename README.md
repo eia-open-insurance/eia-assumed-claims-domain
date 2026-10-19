@@ -21,6 +21,31 @@ Assumed Claims business rules, transaction catalog, orchestration, approvals, an
 - Maintain README, CODEOWNERS, SECURITY, CHANGELOG, tests, and local verification.
 - Contain no business logic in shared libraries or front-end remotes.
 
+## Implemented slice
+
+- Spring Boot 3.4.0 on Java 22, listening on port `8090`.
+- Public API: `GET /api/v1/assumed-claims`, `GET /api/v1/assumed-claims/{id}`,
+  `POST /api/v1/assumed-claims`, and `POST /api/v1/assumed-claims/{id}/status`. The SPEC path
+  `/api/v1/assumed-claims/claims` is served as an alias.
+- Every request requires `X-EIA-Tenant` (UUID) and `X-EIA-Book: ASSUMED`. Missing tenant context
+  returns a structured `400`; a missing or different book returns a structured `404`
+  (`EIA-RNS-7005`), never `403`.
+- The service enforces `report_date >= loss_date`, non-negative reserves, and the
+  `AssumedClaimStatus` lifecycle from SPEC §11.5.6, including optimistic version checks.
+- The expert is called through a `RestClient` component at `eia.assumed-claims.expert-url`
+  (default `http://localhost:8089`), forwarding the ASSUMED book and tenant headers.
+- Errors are structured `Problem`-shaped JSON for `400`, `404`, `409`, and `502` cases.
+
+## Local run
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-22.0.2.9-hotspot'
+.\gradlew.bat build
+java -jar build\libs\eia-assumed-claims-domain-0.1.0-SNAPSHOT.jar
+```
+
+Start the expert first; the domain does not persist claims itself.
+
 ## Verification
 
 - Lint and format

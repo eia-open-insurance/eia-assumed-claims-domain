@@ -1,0 +1,13 @@
+server:
+  port: 8090
+spring:
+  application:
+    name: eia-assumed-claims-domain
+eia:
+  assumed-claims:
+    expert-url: http://localhost:8089
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
