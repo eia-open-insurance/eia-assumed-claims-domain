@@ -7,7 +7,7 @@
 - Owner: Assumed Claims
 - Runtime: Java 22 and Spring Boot
 - Data store: eia_assumed (tx schema)
-- Depends on: eia-assumed-claims-expert, eia-contracts, eia-open-insurance-libs
+- Depends on: eia-assumed-claims-expert, eia-contracts, eia-platform/libs
 
 ## Purpose
 
