@@ -24,8 +24,9 @@ Assumed Claims business rules, transaction catalog, orchestration, approvals, an
 ## Implemented slice
 
 - Spring Boot 3.4.0 on Java 22, listening on port `8090`.
-- Public claim API: `GET /api/v1/assumed-claims`, `GET /api/v1/assumed-claims/{id}`,
-  `POST /api/v1/assumed-claims`, `POST /api/v1/assumed-claims/{id}/status`,
+- Public claim API: `GET /api/v1/assumed-claims`, `GET /api/v1/assumed-claims/search`,
+  `GET /api/v1/assumed-claims/{id}`, `POST /api/v1/assumed-claims`,
+  `POST /api/v1/assumed-claims/{id}/status`,
   `POST /api/v1/assumed-claims/{id}/close`, `GET /api/v1/assumed-claims/{id}/financials`, and
   `GET /api/v1/assumed-claims/{id}/audit`. The SPEC path `/api/v1/assumed-claims/claims` is served
   as an alias.
@@ -44,6 +45,10 @@ Assumed Claims business rules, transaction catalog, orchestration, approvals, an
   second-slice business invariants live in the expert, which owns the transactional record; the
   domain propagates the expert's status, stable code, category, and field errors unchanged
   (including `409`, `422`, and `428`).
+- `GET /api/v1/assumed-claims/search` matches `assumedClaimNumber`, `cedentClaimNumber`, and
+  `contractId` case-insensitively for the caller's tenant and the ASSUMED book. A blank `q`
+  returns the latest records by `updatedAt`; `limit` defaults to 10 and is capped at 25. The
+  domain owns no tables, so the projection is built from the existing tenant-scoped expert list.
 - The expert is called through a `RestClient` component at `eia.assumed-claims.expert-url`
   (default `http://localhost:8089`), forwarding the ASSUMED book and tenant headers.
 - Errors are structured `Problem`-shaped JSON for `400`, `404`, `409`, `422`, `428`, and `502` cases.
