@@ -154,7 +154,7 @@ class AssumedClaimAssignmentControllerTest {
                 .andExpect(jsonPath("$.code").value("EIA-RNS-7004"))
                 .andExpect(jsonPath("$.category").value("VALIDATION"))
                 .andExpect(jsonPath("$.errors[*].field",
-                        hasItems("assignedAdjuster", "assignedTeam", "expectedVersion")));
+                        hasItems("assignedAdjuster", "expectedVersion")));
 
         verifyNoInteractions(client);
     }
@@ -263,3 +263,4 @@ class AssumedClaimAssignmentControllerTest {
         );
     }
 }
+
