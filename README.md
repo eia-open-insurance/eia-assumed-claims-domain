@@ -37,6 +37,13 @@ Assumed Claims business rules, transaction catalog, orchestration, approvals, an
   - `GET|POST /{id}/recoveries`;
   - `GET /{id}/commutation`, `POST /{id}/commute`;
   - `GET|POST /{id}/disputes`, `POST /{id}/disputes/{disputeId}/resolve`.
+- Public task and note API (also under the `/claims` alias):
+  - `GET|POST /{id}/tasks`, `PATCH /{id}/tasks/{taskId}` with `{status, version}`;
+  - `GET|POST /{id}/notes`.
+  The task and note projections mirror Direct Claims exactly (the expert's `tenantId` is not
+  exposed). The domain validates task statuses (`OPEN`, `COMPLETE`, `CANCELLED`), priorities
+  (`LOW`, `NORMAL`, `HIGH`, `URGENT`), and note types (`GENERAL`, `DIARY`, `COVERAGE`, `RESERVE`,
+  `LITIGATION`, `SETTLEMENT`) before forwarding the command to the expert.
 - Every request requires `X-EIA-Tenant` (UUID) and `X-EIA-Book: ASSUMED`. Missing tenant context
   returns a structured `400`; a missing or different book returns a structured `404`
   (`EIA-RNS-7005`), never `403`.

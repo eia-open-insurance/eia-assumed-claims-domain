@@ -15,3 +15,5 @@
 - Second-slice public orchestration for advices/bordereaux, reserves, cash calls, recoveries,
   commutation, disputes, financials, closure, and audit; expert problem propagation preserves
   status/code/category/field errors.
+- Claim tasks and notes: list/create tasks, versioned task status changes, and append-only notes,
+  with Direct-identical projections, closed-set validation, and 400/404/409 problem propagation.

@@ -173,6 +173,34 @@ public class AssumedClaimClient {
                 command, DisputeDto.class, claimId);
     }
 
+    // ------------------------------------------------------------------ tasks
+    public List<ClaimTaskDto> findTasks(UUID tenantId, UUID claimId) {
+        return getChildList(tenantId, "/internal/v1/assumed-claims/" + claimId + "/tasks",
+                new ParameterizedTypeReference<>() {}, claimId);
+    }
+
+    public ClaimTaskDto addTask(UUID tenantId, UUID claimId, CreateTaskCommand command) {
+        return postChild(tenantId, "/internal/v1/assumed-claims/" + claimId + "/tasks",
+                command, ClaimTaskDto.class, claimId);
+    }
+
+    public ClaimTaskDto changeTaskStatus(UUID tenantId, UUID claimId, UUID taskId,
+                                         TaskStatusChangeCommand command) {
+        return patchChild(tenantId, "/internal/v1/assumed-claims/" + claimId + "/tasks/" + taskId,
+                command, ClaimTaskDto.class, claimId);
+    }
+
+    // ------------------------------------------------------------------ notes
+    public List<ClaimNoteDto> findNotes(UUID tenantId, UUID claimId) {
+        return getChildList(tenantId, "/internal/v1/assumed-claims/" + claimId + "/notes",
+                new ParameterizedTypeReference<>() {}, claimId);
+    }
+
+    public ClaimNoteDto addNote(UUID tenantId, UUID claimId, CreateNoteCommand command) {
+        return postChild(tenantId, "/internal/v1/assumed-claims/" + claimId + "/notes",
+                command, ClaimNoteDto.class, claimId);
+    }
+
     private <T> T get(UUID tenantId, String path, Class<T> type, UUID notFoundId) {
         try {
             return client.get()
@@ -219,6 +247,99 @@ public class AssumedClaimClient {
         } catch (ResourceAccessException exception) {
             throw ApiException.expertUnavailable();
         }
+    }
+
+    private <T> List<T> getChildList(UUID tenantId, String path, ParameterizedTypeReference<List<T>> type,
+                                     UUID claimId) {
+        try {
+            List<T> values = client.get()
+                    .uri(path)
+                    .header(BOOK_HEADER, BOOK)
+                    .header(TENANT_HEADER, tenantId.toString())
+                    .retrieve()
+                    .body(type);
+            return values == null ? List.of() : values;
+        } catch (RestClientResponseException exception) {
+            throw translateChild(exception, claimId);
+        } catch (ResourceAccessException exception) {
+            throw ApiException.expertUnavailable();
+        }
+    }
+
+    private <T> T postChild(UUID tenantId, String path, Object body, Class<T> type, UUID claimId) {
+        try {
+            return client.post()
+                    .uri(path)
+                    .header(BOOK_HEADER, BOOK)
+                    .header(TENANT_HEADER, tenantId.toString())
+                    .body(body)
+                    .retrieve()
+                    .body(type);
+        } catch (RestClientResponseException exception) {
+            throw translateChild(exception, claimId);
+        } catch (ResourceAccessException exception) {
+            throw ApiException.expertUnavailable();
+        }
+    }
+
+    private <T> T patchChild(UUID tenantId, String path, Object body, Class<T> type, UUID claimId) {
+        try {
+            return client.patch()
+                    .uri(path)
+                    .header(BOOK_HEADER, BOOK)
+                    .header(TENANT_HEADER, tenantId.toString())
+                    .body(body)
+                    .retrieve()
+                    .body(type);
+        } catch (RestClientResponseException exception) {
+            throw translateChild(exception, claimId);
+        } catch (ResourceAccessException exception) {
+            throw ApiException.expertUnavailable();
+        }
+    }
+
+    /**
+     * Child-resource errors keep the expert's problem detail and status (400/404/409), unlike the
+     * claim-level translation that always collapses a 404 to the domain's own not-found message.
+     * A bare 404 still maps to the domain's not-found problem.
+     */
+    private ApiException translateChild(RestClientResponseException exception, UUID claimId) {
+        int status = exception.getStatusCode().value();
+        if (exception.getStatusCode().is5xxServerError()) {
+            return ApiException.expertUnavailable();
+        }
+        ExpertProblem problem = problem(exception);
+        if (problem != null && problem.code() != null && !problem.code().isBlank()) {
+            return ApiException.fromExpert(status, problem.code(), problem.category(), problem.title(),
+                    problem.detail(), problem.errors());
+        }
+        if (status == 404) {
+            if (problem != null && problem.detail() != null && !problem.detail().isBlank()) {
+                return ApiException.fromExpert(404, "EIA-RNS-7001",
+                        problem.category() == null ? "NOT_FOUND" : problem.category(),
+                        problem.title() == null ? "Assumed claim not found" : problem.title(),
+                        problem.detail(), problem.errors());
+            }
+            return ApiException.assumedClaimNotFound(claimId);
+        }
+        if (status == 400) {
+            return ApiException.validation(problem != null && problem.detail() != null
+                            ? problem.detail()
+                            : "The assumed claims expert rejected the request as invalid.",
+                    problem == null ? List.of() : problem.errors());
+        }
+        if (status == 409) {
+            return ApiException.fromExpert(409, "EIA-RNS-7006", "CONFLICT", "Version conflict",
+                    problem != null && problem.detail() != null
+                            ? problem.detail()
+                            : "The task was modified concurrently; reload and retry.",
+                    problem == null ? List.of() : problem.errors());
+        }
+        if (problem != null) {
+            return ApiException.fromExpert(status, "EIA-RNS-7004", problem.category(), problem.title(),
+                    problem.detail(), problem.errors());
+        }
+        return ApiException.expertRejected(status);
     }
 
     private ApiException translate(RestClientResponseException exception, UUID notFoundId) {
