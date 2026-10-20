@@ -81,6 +81,15 @@ public class AssumedClaimService {
         return client.changeStatus(tenantId, id, command.targetStatus(), command.expectedVersion());
     }
 
+    /**
+     * Assignment is an expert-owned command: the expert checks the expected version, writes the
+     * assignment audit, and fixes {@code assignedAt}. The domain forwards the actor and preserves
+     * the expert's 400/404/409 problem instead of translating it.
+     */
+    public AssumedClaimDto assign(UUID tenantId, UUID claimId, AssignClaimCommand command, String actor) {
+        return client.assign(tenantId, claimId, command, actor);
+    }
+
     public AssumedClaimDto close(UUID tenantId, UUID id) {
         return client.close(tenantId, id);
     }

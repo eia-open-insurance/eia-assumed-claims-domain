@@ -21,3 +21,7 @@
   `Idempotency-Key` (1-64 characters), validate its bounds, forward it to the expert, and preserve
   the expert's 201 body plus `Idempotent-Replay`; a 409 `EIA-RNS-4091`
   `IDEMPOTENCY_KEY_REUSED` problem is propagated unchanged.
+- Claim assignment: `PATCH /api/v1/assumed-claims/claims/{claimId}/assignment` with
+  `{assignedAdjuster, assignedTeam, expectedVersion}`; the tenant, ASSUMED book, and optional
+  `X-EIA-Actor` actor are forwarded, the claim projection exposes `assignedAdjuster`,
+  `assignedTeam`, and `assignedAt`, and expert 400/404/409 problems are preserved.

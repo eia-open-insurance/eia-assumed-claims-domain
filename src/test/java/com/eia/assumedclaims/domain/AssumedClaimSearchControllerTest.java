@@ -134,6 +134,9 @@ class AssumedClaimSearchControllerTest {
                     LocalDate.of(2026, 3, 18),
                     new BigDecimal("12500.0000"),
                     "USD",
+                    null,
+                    null,
+                    null,
                     0,
                     NOW.plusSeconds(i),
                     NOW.plusSeconds(i)));
@@ -154,6 +157,9 @@ class AssumedClaimSearchControllerTest {
                 LocalDate.of(2026, 3, 18),
                 new BigDecimal("12500.0000"),
                 "USD",
+                null,
+                null,
+                null,
                 0,
                 NOW,
                 NOW);

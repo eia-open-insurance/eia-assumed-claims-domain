@@ -22,6 +22,9 @@ public record AssumedClaimDto(
         LocalDate reportDate,
         @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal reserveAmount,
         String reserveCurrency,
+        String assignedAdjuster,
+        String assignedTeam,
+        Instant assignedAt,
         int version,
         Instant createdAt,
         Instant updatedAt

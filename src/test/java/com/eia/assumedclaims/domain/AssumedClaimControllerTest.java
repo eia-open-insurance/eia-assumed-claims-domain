@@ -297,6 +297,9 @@ class AssumedClaimControllerTest {
                 LocalDate.parse("2026-09-02"),
                 new BigDecimal("12500.0000"),
                 "USD",
+                null,
+                null,
+                null,
                 version,
                 now,
                 now

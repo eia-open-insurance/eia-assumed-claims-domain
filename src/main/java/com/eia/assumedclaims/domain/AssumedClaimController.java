@@ -3,6 +3,7 @@ package com.eia.assumedclaims.domain;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -62,6 +63,20 @@ public class AssumedClaimController {
             @PathVariable UUID id,
             @Valid @RequestBody StatusChangeCommand command) {
         return service.changeStatus(tenantId, id, command);
+    }
+
+    /**
+     * Assigns the claim to an adjuster and a team at the observed claim version. The tenant is
+     * forwarded with the ASSUMED book and the optional {@code X-EIA-Actor} actor; the expert's
+     * 400/404/409 problem is preserved unchanged.
+     */
+    @PatchMapping("/{claimId}/assignment")
+    public AssumedClaimDto assign(
+            @RequestHeader("X-EIA-Tenant") UUID tenantId,
+            @RequestHeader(value = "X-EIA-Actor", required = false) String actor,
+            @PathVariable UUID claimId,
+            @Valid @RequestBody AssignClaimCommand command) {
+        return service.assign(tenantId, claimId, command, actor);
     }
 
     @PostMapping("/{id}/close")

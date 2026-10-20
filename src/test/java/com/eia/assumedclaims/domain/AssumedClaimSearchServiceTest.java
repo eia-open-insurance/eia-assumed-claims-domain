@@ -203,6 +203,9 @@ class AssumedClaimSearchServiceTest {
                 LocalDate.of(2026, 3, 18),
                 new BigDecimal("12500.0000"),
                 "USD",
+                null,
+                null,
+                null,
                 0,
                 updatedAt,
                 updatedAt);

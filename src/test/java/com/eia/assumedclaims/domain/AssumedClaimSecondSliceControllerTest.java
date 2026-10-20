@@ -397,7 +397,7 @@ class AssumedClaimSecondSliceControllerTest {
         AssumedClaimDto claim = new AssumedClaimDto(CLAIM, TENANT, "ASSUMED", "RNS-2026-0007731",
                 UUID.fromString("22222222-2222-7222-8222-222222222222"), "CED-778",
                 AssumedClaimStatus.CLOSED, LocalDate.parse("2026-09-01"), LocalDate.parse("2026-09-02"),
-                new BigDecimal("0.0000"), "USD", 8, Instant.now(), Instant.now());
+                new BigDecimal("0.0000"), "USD", null, null, null, 8, Instant.now(), Instant.now());
         given(client.close(TENANT, CLAIM)).willReturn(claim);
         given(client.financials(TENANT, CLAIM)).willReturn(new FinancialSummaryDto(
                 CLAIM, TENANT, "USD", new BigDecimal("100.0000"), new BigDecimal("0.0000"),

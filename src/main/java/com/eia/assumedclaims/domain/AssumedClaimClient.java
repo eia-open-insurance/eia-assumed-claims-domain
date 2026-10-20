@@ -25,6 +25,7 @@ public class AssumedClaimClient {
     public static final String BOOK_HEADER = "X-EIA-Book";
     public static final String TENANT_HEADER = "X-EIA-Tenant";
     public static final String USER_HEADER = "X-EIA-User";
+    public static final String ACTOR_HEADER = "X-EIA-Actor";
     public static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     public static final String IDEMPOTENT_REPLAY_HEADER = "Idempotent-Replay";
 
@@ -78,6 +79,34 @@ public class AssumedClaimClient {
                 }
             }
             throw translate(exception, id);
+        } catch (ResourceAccessException exception) {
+            throw ApiException.expertUnavailable();
+        }
+    }
+
+    /**
+     * Assigns the claim at the observed claim version. The expert owns the version check and the
+     * assignment audit; the domain forwards the tenant and ASSUMED book headers plus the optional
+     * actor and preserves the expert's 400/404/409 problem.
+     */
+    public AssumedClaimDto assign(UUID tenantId, UUID claimId, AssignClaimCommand command, String actor) {
+        try {
+            RestClient.RequestBodySpec request = client.patch()
+                    .uri("/internal/v1/assumed-claims/" + claimId + "/assignment")
+                    .header(BOOK_HEADER, BOOK)
+                    .header(TENANT_HEADER, tenantId.toString());
+            if (actor != null && !actor.isBlank()) {
+                request.header(ACTOR_HEADER, actor.trim());
+            }
+            return request.body(new AssignmentBody(
+                            command.assignedAdjuster(),
+                            command.assignedTeam(),
+                            command.expectedVersion()))
+                    .retrieve()
+                    .body(AssumedClaimDto.class);
+        } catch (RestClientResponseException exception) {
+            throw translateChild(exception, claimId,
+                    "Assumed claim assignment was modified concurrently; reload and retry.");
         } catch (ResourceAccessException exception) {
             throw ApiException.expertUnavailable();
         }
@@ -323,6 +352,12 @@ public class AssumedClaimClient {
      * A bare 404 still maps to the domain's not-found problem.
      */
     private ApiException translateChild(RestClientResponseException exception, UUID claimId) {
+        return translateChild(exception, claimId,
+                "The task was modified concurrently; reload and retry.");
+    }
+
+    private ApiException translateChild(RestClientResponseException exception, UUID claimId,
+                                        String conflictDetail) {
         int status = exception.getStatusCode().value();
         if (exception.getStatusCode().is5xxServerError()) {
             return ApiException.expertUnavailable();
@@ -351,7 +386,7 @@ public class AssumedClaimClient {
             return ApiException.fromExpert(409, "EIA-RNS-7006", "CONFLICT", "Version conflict",
                     problem != null && problem.detail() != null
                             ? problem.detail()
-                            : "The task was modified concurrently; reload and retry.",
+                            : conflictDetail,
                     problem == null ? List.of() : problem.errors());
         }
         if (problem != null) {
@@ -403,6 +438,12 @@ public class AssumedClaimClient {
     ) {}
 
     record StatusBody(UUID tenantId, AssumedClaimStatus targetStatus, int expectedVersion) {}
+
+    record AssignmentBody(
+            String assignedAdjuster,
+            String assignedTeam,
+            Integer expectedVersion
+    ) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record ExpertProblem(

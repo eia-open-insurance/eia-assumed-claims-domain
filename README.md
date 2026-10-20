@@ -30,6 +30,11 @@ Assumed Claims business rules, transaction catalog, orchestration, approvals, an
   `POST /api/v1/assumed-claims/{id}/close`, `GET /api/v1/assumed-claims/{id}/financials`, and
   `GET /api/v1/assumed-claims/{id}/audit`. The SPEC path `/api/v1/assumed-claims/claims` is served
   as an alias.
+- Claim assignment at `PATCH /api/v1/assumed-claims/claims/{claimId}/assignment` with
+  `{assignedAdjuster, assignedTeam, expectedVersion}`. The domain forwards the tenant, the ASSUMED
+  book, and the optional `X-EIA-Actor` actor to the expert and preserves the expert's `400`, `404`,
+  and `409` problems. Claim projections include `assignedAdjuster`, `assignedTeam`, and
+  `assignedAt`.
 - Public second-slice API (both the short and the `/claims` alias form):
   - `GET|POST /{id}/advices`, `POST /{id}/advices/{adviceId}/accept`, `GET|POST /{id}/bordereaux`;
   - `GET|POST /{id}/reserves`;
