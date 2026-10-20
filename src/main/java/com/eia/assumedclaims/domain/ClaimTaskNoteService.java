@@ -34,7 +34,9 @@ public class ClaimTaskNoteService {
         return client.findTasks(tenantId, claimId);
     }
 
-    public ClaimTaskDto addTask(UUID tenantId, UUID claimId, CreateTaskCommand command) {
+    public CommandResult<ClaimTaskDto> addTask(UUID tenantId, UUID claimId,
+                                               CreateTaskCommand command, String idempotencyKey) {
+        String key = IdempotencyKeys.normalize(idempotencyKey);
         List<FieldIssue> issues = new ArrayList<>();
         requireText(command.title(), "title", issues);
         if (command.dueDate() == null) {
@@ -46,7 +48,7 @@ public class ClaimTaskNoteService {
                     "Unknown priority: " + command.priority()));
         }
         throwIfInvalid(issues, "The task command is invalid.");
-        return client.addTask(tenantId, claimId, command);
+        return client.addTask(tenantId, claimId, command, key);
     }
 
     public ClaimTaskDto changeTaskStatus(UUID tenantId, UUID claimId, UUID taskId,
@@ -69,7 +71,9 @@ public class ClaimTaskNoteService {
         return client.findNotes(tenantId, claimId);
     }
 
-    public ClaimNoteDto addNote(UUID tenantId, UUID claimId, CreateNoteCommand command) {
+    public CommandResult<ClaimNoteDto> addNote(UUID tenantId, UUID claimId,
+                                               CreateNoteCommand command, String idempotencyKey) {
+        String key = IdempotencyKeys.normalize(idempotencyKey);
         List<FieldIssue> issues = new ArrayList<>();
         String noteType = requireText(command.noteType(), "noteType", issues);
         if (noteType != null && !NOTE_TYPES.contains(noteType.toUpperCase(Locale.ROOT))) {
@@ -79,7 +83,7 @@ public class ClaimTaskNoteService {
         requireText(command.body(), "body", issues);
         requireText(command.author(), "author", issues);
         throwIfInvalid(issues, "The note command is invalid.");
-        return client.addNote(tenantId, claimId, command);
+        return client.addNote(tenantId, claimId, command, key);
     }
 
     // ------------------------------------------------------------------ helpers

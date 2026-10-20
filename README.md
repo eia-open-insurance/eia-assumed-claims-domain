@@ -43,7 +43,10 @@ Assumed Claims business rules, transaction catalog, orchestration, approvals, an
   The task and note projections mirror Direct Claims exactly (the expert's `tenantId` is not
   exposed). The domain validates task statuses (`OPEN`, `COMPLETE`, `CANCELLED`), priorities
   (`LOW`, `NORMAL`, `HIGH`, `URGENT`), and note types (`GENERAL`, `DIARY`, `COVERAGE`, `RESERVE`,
-  `LITIGATION`, `SETTLEMENT`) before forwarding the command to the expert.
+  `LITIGATION`, `SETTLEMENT`) before forwarding the command to the expert. The task and note POSTs
+  accept an optional `Idempotency-Key` (1-64 characters), forward it to the expert, and preserve
+  the expert's original 201 body plus the `Idempotent-Replay` marker; reuse with a different body
+  keeps the expert's 409 `EIA-RNS-4091` `IDEMPOTENCY_KEY_REUSED` problem.
 - Every request requires `X-EIA-Tenant` (UUID) and `X-EIA-Book: ASSUMED`. Missing tenant context
   returns a structured `400`; a missing or different book returns a structured `404`
   (`EIA-RNS-7005`), never `403`.

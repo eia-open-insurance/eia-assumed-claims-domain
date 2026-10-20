@@ -17,3 +17,7 @@
   status/code/category/field errors.
 - Claim tasks and notes: list/create tasks, versioned task status changes, and append-only notes,
   with Direct-identical projections, closed-set validation, and 400/404/409 problem propagation.
+- Idempotent create header forwarding: both task and note POSTs accept an optional
+  `Idempotency-Key` (1-64 characters), validate its bounds, forward it to the expert, and preserve
+  the expert's 201 body plus `Idempotent-Replay`; a 409 `EIA-RNS-4091`
+  `IDEMPOTENCY_KEY_REUSED` problem is propagated unchanged.

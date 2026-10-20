@@ -17,6 +17,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -24,6 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -83,8 +85,8 @@ class ClaimTaskNoteControllerTest {
 
     @Test
     void opensATaskWithThePublicPayload() throws Exception {
-        given(client.addTask(eq(TENANT), eq(CLAIM), any(CreateTaskCommand.class)))
-                .willReturn(task("OPEN"));
+        given(client.addTask(eq(TENANT), eq(CLAIM), any(CreateTaskCommand.class), isNull()))
+                .willReturn(new CommandResult<>(task("OPEN"), false));
 
         mvc.perform(post(CLAIMS + "/tasks")
                         .header("X-EIA-Book", ASSUMED)
@@ -100,14 +102,77 @@ class ClaimTaskNoteControllerTest {
                                 }
                                 """))
                 .andExpect(status().isCreated())
+                .andExpect(header().string("Idempotent-Replay", "false"))
                 .andExpect(jsonPath("$.id").value(TASK.toString()))
                 .andExpect(jsonPath("$.status").value("OPEN"));
 
         ArgumentCaptor<CreateTaskCommand> command = ArgumentCaptor.forClass(CreateTaskCommand.class);
-        verify(client).addTask(eq(TENANT), eq(CLAIM), command.capture());
+        verify(client).addTask(eq(TENANT), eq(CLAIM), command.capture(), isNull());
         assertEquals(new CreateTaskCommand("Obtain updated medical records",
                 "Provider records requested at FNOL", LocalDate.of(2026, 4, 1), "HIGH",
                 "A. Adjuster"), command.getValue());
+    }
+
+    @Test
+    void forwardsAnIdempotencyKeyOnTaskCreate() throws Exception {
+        given(client.addTask(eq(TENANT), eq(CLAIM), any(CreateTaskCommand.class),
+                eq("task-key-1"))).willReturn(new CommandResult<>(task("OPEN"), false));
+
+        mvc.perform(post(CLAIMS + "/tasks")
+                        .header("X-EIA-Book", ASSUMED)
+                        .header("X-EIA-Tenant", TENANT.toString())
+                        .header("Idempotency-Key", "task-key-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "Obtain records", "dueDate": "2026-04-01",
+                                 "priority": "HIGH"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Idempotent-Replay", "false"))
+                .andExpect(jsonPath("$.id").value(TASK.toString()));
+
+        verify(client).addTask(eq(TENANT), eq(CLAIM), any(CreateTaskCommand.class),
+                eq("task-key-1"));
+    }
+
+    @Test
+    void replaysATaskCreateWithTheOriginalBodyAndMarker() throws Exception {
+        given(client.addTask(eq(TENANT), eq(CLAIM), any(CreateTaskCommand.class),
+                eq("task-key-1"))).willReturn(new CommandResult<>(task("OPEN"), true));
+
+        mvc.perform(post(CLAIMS + "/tasks")
+                        .header("X-EIA-Book", ASSUMED)
+                        .header("X-EIA-Tenant", TENANT.toString())
+                        .header("Idempotency-Key", "task-key-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "Obtain records", "dueDate": "2026-04-01",
+                                 "priority": "HIGH"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Idempotent-Replay", "true"))
+                .andExpect(jsonPath("$.id").value(TASK.toString()))
+                .andExpect(jsonPath("$.taskNumber").value("TSK-2026-0000001"));
+    }
+
+    @Test
+    void rejectsAnIdempotencyKeyOutsideTheLengthBounds() throws Exception {
+        mvc.perform(post(CLAIMS + "/tasks")
+                        .header("X-EIA-Book", ASSUMED)
+                        .header("X-EIA-Tenant", TENANT.toString())
+                        .header("Idempotency-Key", "x".repeat(65))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "Obtain records", "dueDate": "2026-04-01",
+                                 "priority": "HIGH"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("EIA-RNS-7004"))
+                .andExpect(jsonPath("$.errors[0].field").value("Idempotency-Key"))
+                .andExpect(jsonPath("$.errors[0].code").value("INVALID_IDEMPOTENCY_KEY"));
+
+        verifyNoInteractions(client);
     }
 
     @Test
@@ -182,7 +247,8 @@ class ClaimTaskNoteControllerTest {
 
     @Test
     void addsANoteWithThePublicPayload() throws Exception {
-        given(client.addNote(eq(TENANT), eq(CLAIM), any(CreateNoteCommand.class))).willReturn(note());
+        given(client.addNote(eq(TENANT), eq(CLAIM), any(CreateNoteCommand.class), isNull()))
+                .willReturn(new CommandResult<>(note(), false));
 
         mvc.perform(post(CLAIMS + "/notes")
                         .header("X-EIA-Book", ASSUMED)
@@ -196,13 +262,60 @@ class ClaimTaskNoteControllerTest {
                                 }
                                 """))
                 .andExpect(status().isCreated())
+                .andExpect(header().string("Idempotent-Replay", "false"))
                 .andExpect(jsonPath("$.noteNumber").value("NTE-2026-0000001"));
 
         ArgumentCaptor<CreateNoteCommand> command = ArgumentCaptor.forClass(CreateNoteCommand.class);
-        verify(client).addNote(eq(TENANT), eq(CLAIM), command.capture());
+        verify(client).addNote(eq(TENANT), eq(CLAIM), command.capture(), isNull());
         assertEquals(new CreateNoteCommand("DIARY",
                 "Called the claimant to confirm the medical authorization", "Dana Handler"),
                 command.getValue());
+    }
+
+    @Test
+    void replaysANoteAppendWithTheOriginalMarker() throws Exception {
+        given(client.addNote(eq(TENANT), eq(CLAIM), any(CreateNoteCommand.class),
+                eq("note-key-1"))).willReturn(new CommandResult<>(note(), true));
+
+        mvc.perform(post(CLAIMS + "/notes")
+                        .header("X-EIA-Book", ASSUMED)
+                        .header("X-EIA-Tenant", TENANT.toString())
+                        .header("Idempotency-Key", "note-key-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"noteType": "DIARY", "body": "Called the claimant",
+                                 "author": "Dana Handler"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Idempotent-Replay", "true"))
+                .andExpect(jsonPath("$.id").value(NOTE.toString()))
+                .andExpect(jsonPath("$.noteNumber").value("NTE-2026-0000001"));
+    }
+
+    @Test
+    void preservesTheExpertIdempotencyConflict() throws Exception {
+        given(client.addTask(eq(TENANT), eq(CLAIM), any(CreateTaskCommand.class),
+                eq("task-key-1"))).willThrow(ApiException.fromExpert(409, "EIA-RNS-4091", "CONFLICT",
+                "Idempotency key reused",
+                "Idempotency-Key was already used with a different request.",
+                List.of(new FieldIssue("Idempotency-Key", "IDEMPOTENCY_KEY_REUSED",
+                        "Idempotency-Key was already used with a different request."))));
+
+        mvc.perform(post(CLAIMS + "/tasks")
+                        .header("X-EIA-Book", ASSUMED)
+                        .header("X-EIA-Tenant", TENANT.toString())
+                        .header("Idempotency-Key", "task-key-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "A different task", "dueDate": "2026-04-01",
+                                 "priority": "HIGH"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("EIA-RNS-4091"))
+                .andExpect(jsonPath("$.category").value("CONFLICT"))
+                .andExpect(jsonPath("$.errors[0].field").value("Idempotency-Key"))
+                .andExpect(jsonPath("$.errors[0].code").value("IDEMPOTENCY_KEY_REUSED"));
     }
 
     @Test
@@ -326,7 +439,7 @@ class ClaimTaskNoteControllerTest {
 
     @Test
     void expertBadRequestOnANoteIsPreservedAs400() throws Exception {
-        given(client.addNote(eq(TENANT), eq(CLAIM), any(CreateNoteCommand.class)))
+        given(client.addNote(eq(TENANT), eq(CLAIM), any(CreateNoteCommand.class), isNull()))
                 .willThrow(ApiException.fromExpert(400, "EIA-RNS-7004", "VALIDATION",
                         "Request validation failed", "noteType is required", List.of()));
 

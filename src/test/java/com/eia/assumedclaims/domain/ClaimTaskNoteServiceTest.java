@@ -46,18 +46,19 @@ class ClaimTaskNoteServiceTest {
     @Test
     void taskRequiresTitleDueDateAndPriority() {
         assertThrows(ApiException.class, () -> service.addTask(TENANT, CLAIM,
-                new CreateTaskCommand(" ", null, LocalDate.of(2026, 4, 1), "HIGH", null)));
+                new CreateTaskCommand(" ", null, LocalDate.of(2026, 4, 1), "HIGH", null), null));
         assertThrows(ApiException.class, () -> service.addTask(TENANT, CLAIM,
-                new CreateTaskCommand("Title", null, null, "HIGH", null)));
+                new CreateTaskCommand("Title", null, null, "HIGH", null), null));
         assertThrows(ApiException.class, () -> service.addTask(TENANT, CLAIM,
-                new CreateTaskCommand("Title", null, LocalDate.of(2026, 4, 1), " ", null)));
+                new CreateTaskCommand("Title", null, LocalDate.of(2026, 4, 1), " ", null), null));
         verifyNoInteractions(client);
     }
 
     @Test
     void taskRejectsAnUnknownPriorityBeforeTheExpertCall() {
         ApiException exception = assertThrows(ApiException.class, () -> service.addTask(TENANT, CLAIM,
-                new CreateTaskCommand("Title", null, LocalDate.of(2026, 4, 1), "CATASTROPHE", null)));
+                new CreateTaskCommand("Title", null, LocalDate.of(2026, 4, 1), "CATASTROPHE", null),
+                null));
 
         assertEquals(400, exception.status().value());
         assertEquals("EIA-RNS-7004", exception.code());
@@ -71,10 +72,41 @@ class ClaimTaskNoteServiceTest {
         CreateTaskCommand command = new CreateTaskCommand("Obtain records", "Provider records",
                 LocalDate.of(2026, 4, 1), "high", "A. Adjuster");
         ClaimTaskDto created = task("OPEN");
-        when(client.addTask(TENANT, CLAIM, command)).thenReturn(created);
+        when(client.addTask(TENANT, CLAIM, command, null))
+                .thenReturn(new CommandResult<>(created, false));
 
-        assertEquals(created, service.addTask(TENANT, CLAIM, command));
-        verify(client).addTask(TENANT, CLAIM, command);
+        assertEquals(created, service.addTask(TENANT, CLAIM, command, null).body());
+        verify(client).addTask(TENANT, CLAIM, command, null);
+    }
+
+    @Test
+    void taskForwardsTheIdempotencyKeyAndReplayMarker() {
+        CreateTaskCommand command = new CreateTaskCommand("Obtain records", "Provider records",
+                LocalDate.of(2026, 4, 1), "HIGH", "A. Adjuster");
+        ClaimTaskDto created = task("OPEN");
+        when(client.addTask(TENANT, CLAIM, command, "task-key-1"))
+                .thenReturn(new CommandResult<>(created, true));
+
+        CommandResult<ClaimTaskDto> result = service.addTask(TENANT, CLAIM, command, "task-key-1");
+
+        assertTrue(result.replayed());
+        assertEquals(created, result.body());
+        verify(client).addTask(TENANT, CLAIM, command, "task-key-1");
+    }
+
+    @Test
+    void taskRejectsAKeyOutsideTheLengthBoundsBeforeTheExpertCall() {
+        CreateTaskCommand command = new CreateTaskCommand("Obtain records", "Provider records",
+                LocalDate.of(2026, 4, 1), "HIGH", "A. Adjuster");
+
+        ApiException tooLong = assertThrows(ApiException.class,
+                () -> service.addTask(TENANT, CLAIM, command, "x".repeat(65)));
+        assertEquals(400, tooLong.status().value());
+        assertEquals("EIA-RNS-7004", tooLong.code());
+        assertEquals("INVALID_IDEMPOTENCY_KEY", tooLong.errors().getFirst().code());
+
+        assertThrows(ApiException.class, () -> service.addTask(TENANT, CLAIM, command, "   "));
+        verifyNoInteractions(client);
     }
 
     @Test
@@ -121,18 +153,18 @@ class ClaimTaskNoteServiceTest {
     @Test
     void noteRequiresTypeBodyAndAuthor() {
         assertThrows(ApiException.class, () -> service.addNote(TENANT, CLAIM,
-                new CreateNoteCommand(null, "Body", "Author")));
+                new CreateNoteCommand(null, "Body", "Author"), null));
         assertThrows(ApiException.class, () -> service.addNote(TENANT, CLAIM,
-                new CreateNoteCommand("DIARY", " ", "Author")));
+                new CreateNoteCommand("DIARY", " ", "Author"), null));
         assertThrows(ApiException.class, () -> service.addNote(TENANT, CLAIM,
-                new CreateNoteCommand("DIARY", "Body", " ")));
+                new CreateNoteCommand("DIARY", "Body", " "), null));
         verifyNoInteractions(client);
     }
 
     @Test
     void noteRejectsAnUnknownNoteTypeBeforeTheExpertCall() {
         ApiException exception = assertThrows(ApiException.class, () -> service.addNote(TENANT, CLAIM,
-                new CreateNoteCommand("RANDOM", "Body", "Author")));
+                new CreateNoteCommand("RANDOM", "Body", "Author"), null));
 
         assertEquals(400, exception.status().value());
         assertEquals("EIA-RNS-7004", exception.code());
@@ -145,10 +177,26 @@ class ClaimTaskNoteServiceTest {
     void noteDelegatesAValidAppend() {
         CreateNoteCommand command = new CreateNoteCommand("DIARY", "Called the claimant", "Dana");
         ClaimNoteDto created = note();
-        when(client.addNote(TENANT, CLAIM, command)).thenReturn(created);
+        when(client.addNote(TENANT, CLAIM, command, null))
+                .thenReturn(new CommandResult<>(created, false));
 
-        assertEquals(created, service.addNote(TENANT, CLAIM, command));
-        verify(client).addNote(TENANT, CLAIM, command);
+        assertEquals(created, service.addNote(TENANT, CLAIM, command, null).body());
+        verify(client).addNote(TENANT, CLAIM, command, null);
+    }
+
+    @Test
+    void noteForwardsTheIdempotencyKeyAndReplayMarker() {
+        CreateNoteCommand command = new CreateNoteCommand("DIARY", "Called the claimant", "Dana");
+        ClaimNoteDto created = note();
+        when(client.addNote(TENANT, CLAIM, command, "note-key-1"))
+                .thenReturn(new CommandResult<>(created, true));
+
+        CommandResult<ClaimNoteDto> result = service.addNote(TENANT, CLAIM, command,
+                "note-key-1");
+
+        assertTrue(result.replayed());
+        assertEquals(created, result.body());
+        verify(client).addNote(TENANT, CLAIM, command, "note-key-1");
     }
 
     // ------------------------------------------------------------------ fixtures

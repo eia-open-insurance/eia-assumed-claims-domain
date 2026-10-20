@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -24,6 +25,8 @@ public class AssumedClaimClient {
     public static final String BOOK_HEADER = "X-EIA-Book";
     public static final String TENANT_HEADER = "X-EIA-Tenant";
     public static final String USER_HEADER = "X-EIA-User";
+    public static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+    public static final String IDEMPOTENT_REPLAY_HEADER = "Idempotent-Replay";
 
     private final RestClient client;
     private final ObjectMapper objectMapper;
@@ -179,9 +182,10 @@ public class AssumedClaimClient {
                 new ParameterizedTypeReference<>() {}, claimId);
     }
 
-    public ClaimTaskDto addTask(UUID tenantId, UUID claimId, CreateTaskCommand command) {
-        return postChild(tenantId, "/internal/v1/assumed-claims/" + claimId + "/tasks",
-                command, ClaimTaskDto.class, claimId);
+    public CommandResult<ClaimTaskDto> addTask(UUID tenantId, UUID claimId,
+                                               CreateTaskCommand command, String idempotencyKey) {
+        return postChildCommand(tenantId, "/internal/v1/assumed-claims/" + claimId + "/tasks",
+                command, ClaimTaskDto.class, claimId, idempotencyKey);
     }
 
     public ClaimTaskDto changeTaskStatus(UUID tenantId, UUID claimId, UUID taskId,
@@ -196,9 +200,10 @@ public class AssumedClaimClient {
                 new ParameterizedTypeReference<>() {}, claimId);
     }
 
-    public ClaimNoteDto addNote(UUID tenantId, UUID claimId, CreateNoteCommand command) {
-        return postChild(tenantId, "/internal/v1/assumed-claims/" + claimId + "/notes",
-                command, ClaimNoteDto.class, claimId);
+    public CommandResult<ClaimNoteDto> addNote(UUID tenantId, UUID claimId,
+                                               CreateNoteCommand command, String idempotencyKey) {
+        return postChildCommand(tenantId, "/internal/v1/assumed-claims/" + claimId + "/notes",
+                command, ClaimNoteDto.class, claimId, idempotencyKey);
     }
 
     private <T> T get(UUID tenantId, String path, Class<T> type, UUID notFoundId) {
@@ -266,15 +271,29 @@ public class AssumedClaimClient {
         }
     }
 
-    private <T> T postChild(UUID tenantId, String path, Object body, Class<T> type, UUID claimId) {
+    /**
+     * POSTs a child-resource create command, forwarding the optional
+     * {@code Idempotency-Key}, and preserves the expert's 201 body with its
+     * {@code Idempotent-Replay} marker.
+     */
+    private <T> CommandResult<T> postChildCommand(UUID tenantId,
+                                                  String path,
+                                                  Object body,
+                                                  Class<T> type,
+                                                  UUID claimId,
+                                                  String idempotencyKey) {
         try {
-            return client.post()
+            RestClient.RequestBodySpec request = client.post()
                     .uri(path)
                     .header(BOOK_HEADER, BOOK)
-                    .header(TENANT_HEADER, tenantId.toString())
-                    .body(body)
-                    .retrieve()
-                    .body(type);
+                    .header(TENANT_HEADER, tenantId.toString());
+            if (idempotencyKey != null) {
+                request.header(IDEMPOTENCY_KEY_HEADER, idempotencyKey);
+            }
+            ResponseEntity<T> response = request.body(body).retrieve().toEntity(type);
+            boolean replayed = Boolean.parseBoolean(
+                    response.getHeaders().getFirst(IDEMPOTENT_REPLAY_HEADER));
+            return new CommandResult<>(response.getBody(), replayed);
         } catch (RestClientResponseException exception) {
             throw translateChild(exception, claimId);
         } catch (ResourceAccessException exception) {

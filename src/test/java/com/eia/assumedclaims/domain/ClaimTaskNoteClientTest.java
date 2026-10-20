@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -133,13 +134,42 @@ class ClaimTaskNoteClientTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(TASK_JSON));
 
-        ClaimTaskDto task = client.addTask(TENANT, CLAIM, new CreateTaskCommand(
+        CommandResult<ClaimTaskDto> result = client.addTask(TENANT, CLAIM, new CreateTaskCommand(
                 "Obtain updated medical records", "Provider records requested at FNOL",
-                LocalDate.of(2026, 4, 1), "HIGH", "A. Adjuster"));
+                LocalDate.of(2026, 4, 1), "HIGH", "A. Adjuster"), null);
 
-        assertEquals(TASK, task.id());
-        assertEquals("OPEN", task.status());
-        assertEquals(3L, task.version());
+        assertEquals(TASK, result.body().id());
+        assertEquals("OPEN", result.body().status());
+        assertEquals(3L, result.body().version());
+        assertFalse(result.replayed());
+        server.verify();
+    }
+
+    @Test
+    void addTaskForwardsTheIdempotencyKeyAndReadsTheReplayMarker() {
+        server.expect(requestTo(TASK_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header(AssumedClaimClient.IDEMPOTENCY_KEY_HEADER, "task-key-1"))
+                .andExpect(content().json("""
+                        {
+                          "title": "Obtain updated medical records",
+                          "description": "Provider records requested at FNOL",
+                          "dueDate": "2026-04-01",
+                          "priority": "HIGH",
+                          "assignedTo": "A. Adjuster"
+                        }
+                        """, JsonCompareMode.STRICT))
+                .andRespond(withStatus(HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(AssumedClaimClient.IDEMPOTENT_REPLAY_HEADER, "true")
+                        .body(TASK_JSON));
+
+        CommandResult<ClaimTaskDto> result = client.addTask(TENANT, CLAIM, new CreateTaskCommand(
+                "Obtain updated medical records", "Provider records requested at FNOL",
+                LocalDate.of(2026, 4, 1), "HIGH", "A. Adjuster"), "task-key-1");
+
+        assertEquals(TASK, result.body().id());
+        assertTrue(result.replayed());
         server.verify();
     }
 
@@ -204,12 +234,69 @@ class ClaimTaskNoteClientTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(NOTE_JSON));
 
-        ClaimNoteDto note = client.addNote(TENANT, CLAIM, new CreateNoteCommand(
+        CommandResult<ClaimNoteDto> result = client.addNote(TENANT, CLAIM, new CreateNoteCommand(
                 "DIARY", "Called the claimant to confirm the medical authorization",
-                "Dana Handler"));
+                "Dana Handler"), null);
 
-        assertEquals(NOTE, note.id());
-        assertEquals("DIARY", note.noteType());
+        assertEquals(NOTE, result.body().id());
+        assertEquals("DIARY", result.body().noteType());
+        assertFalse(result.replayed());
+        server.verify();
+    }
+
+    @Test
+    void addNoteForwardsTheIdempotencyKeyAndReadsTheReplayMarker() {
+        server.expect(requestTo(NOTE_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header(AssumedClaimClient.IDEMPOTENCY_KEY_HEADER, "note-key-1"))
+                .andRespond(withStatus(HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(AssumedClaimClient.IDEMPOTENT_REPLAY_HEADER, "true")
+                        .body(NOTE_JSON));
+
+        CommandResult<ClaimNoteDto> result = client.addNote(TENANT, CLAIM, new CreateNoteCommand(
+                "DIARY", "Called the claimant to confirm the medical authorization",
+                "Dana Handler"), "note-key-1");
+
+        assertEquals(NOTE, result.body().id());
+        assertTrue(result.replayed());
+        server.verify();
+    }
+
+    @Test
+    void propagatesAnExpertIdempotencyKeyConflict() {
+        server.expect(requestTo(TASK_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header(AssumedClaimClient.IDEMPOTENCY_KEY_HEADER, "task-key-1"))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                        .body("""
+                                {
+                                  "type": "https://errors.eia.example/eia-rns-4091",
+                                  "title": "Idempotency key reused",
+                                  "status": 409,
+                                  "detail": "Idempotency-Key was already used with a different request.",
+                                  "code": "EIA-RNS-4091",
+                                  "category": "CONFLICT",
+                                  "errors": [
+                                    {
+                                      "field": "Idempotency-Key",
+                                      "code": "IDEMPOTENCY_KEY_REUSED",
+                                      "message": "Idempotency-Key was already used with a different request."
+                                    }
+                                  ]
+                                }
+                                """));
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> client.addTask(TENANT, CLAIM, new CreateTaskCommand(
+                        "A different task", null, LocalDate.of(2026, 4, 1), "HIGH", null),
+                        "task-key-1"));
+
+        assertEquals(409, exception.status().value());
+        assertEquals("EIA-RNS-4091", exception.code());
+        assertEquals("CONFLICT", exception.category());
+        assertEquals("IDEMPOTENCY_KEY_REUSED", exception.errors().getFirst().code());
         server.verify();
     }
 
@@ -253,7 +340,7 @@ class ClaimTaskNoteClientTest {
 
         ApiException exception = assertThrows(ApiException.class,
                 () -> client.addNote(TENANT, CLAIM,
-                        new CreateNoteCommand("GENERAL", "body", "author")));
+                        new CreateNoteCommand("GENERAL", "body", "author"), null));
 
         assertEquals(400, exception.status().value());
         assertEquals("EIA-RNS-7004", exception.code());
